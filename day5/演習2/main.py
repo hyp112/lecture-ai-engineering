@@ -1,5 +1,6 @@
 import os
 import pandas as pd
+import time
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
@@ -15,7 +16,7 @@ class DataLoader:
     """データロードを行うクラス"""
 
     @staticmethod
-    def load_titanic_data(path=None):
+    def load_titanic_data(path='C:/Users/kyohe/5_MLOps/lecture-ai-engineering/day5/演習2/data/Titanic.csv'):
         """Titanicデータセットを読み込む"""
         if path:
             return pd.read_csv(path)
@@ -285,3 +286,12 @@ if __name__ == "__main__":
     # ベースラインとの比較
     baseline_ok = ModelTester.compare_with_baseline(metrics)
     print(f"ベースライン比較: {'合格' if baseline_ok else '不合格'}")
+
+
+def test_inference_speed_and_accuracy(model, X_test, y_test):
+    start_time = time.time()
+    y_pred = model.predict(X_test)
+    end_time = time.time()
+    accuracy = accuracy_score(y_test, y_pred)
+    print(f"Inference time: {end_time - start_time:.4f} seconds")
+    print(f"Accuracy: {accuracy:.4f}")

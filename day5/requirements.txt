@@ -1,7 +1,8 @@
+numpy>=1.26
 kedro
 scikit-learn
-mlflow
 pandas
 pytest
 great_expectations
 black
+mlflow
