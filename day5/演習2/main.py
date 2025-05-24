@@ -17,17 +17,18 @@ class DataLoader:
     """データロードを行うクラス"""
 
     @staticmethod
-    def load_titanic_data(
-        path="C:/Users/kyohe/5_MLOps/lecture-ai-engineering/day5/演習2/data/Titanic.csv",
-    ):
+    def load_titanic_data(path=None):
         """Titanicデータセットを読み込む"""
-        if path:
+        if path and os.path.exists(path):
             return pd.read_csv(path)
         else:
-            # ローカルのファイル
-            local_path = "data/Titanic.csv"
+            # スクリプトのあるディレクトリを基準に相対パスでファイルを探す
+            base_dir = os.path.dirname(__file__)  # この.pyファイルのディレクトリ
+            local_path = os.path.join(base_dir, "data", "Titanic.csv")
             if os.path.exists(local_path):
                 return pd.read_csv(local_path)
+            else:
+                raise FileNotFoundError(f"Titanic.csv not found at {local_path}")
 
     @staticmethod
     def preprocess_titanic_data(data):
