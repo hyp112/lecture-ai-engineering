@@ -60,36 +60,49 @@ class DataValidator:
     @staticmethod
     def validate_titanic_data(data):
         """Titanicデータセットの検証"""
+        import pandas as pd
+
         # DataFrameに変換
         if not isinstance(data, pd.DataFrame):
             return False, ["データはpd.DataFrameである必要があります"]
 
-        # Great Expectationsを使用したバリデーション
         try:
-            context = gx.get_context()
-            datasource = context.sources.add_pandas(name="pandas_datasource")
-            data_asset = datasource.add_dataframe_asset(name="my_asset")
-            batch_request = data_asset.build_batch_request(dataframe=data)
+            context = get_context()
+
+            # データソースの設定（明示的に）
+            datasource_config = {
+                "name": "my_pandas_datasource",
+                "class_name": "Datasource",
+                "execution_engine": {"class_name": "PandasExecutionEngine"},
+                "data_connectors": {
+                    "runtime_data_connector": {
+                        "class_name": "RuntimeDataConnector",
+                        "batch_identifiers": ["default_identifier_name"]
+                    }
+                }
+            }
+            context.add_or_update_datasource(**datasource_config)
+
+            # バッチリクエスト作成
+            batch_request = BatchRequest(
+                datasource_name="my_pandas_datasource",
+                data_connector_name="runtime_data_connector",
+                data_asset_name="my_asset",
+                runtime_parameters={"batch_data": data},
+                batch_identifiers={"default_identifier_name": "default_id"},
+            )
+
+            # Validator取得
             validator = context.get_validator(batch_request=batch_request)
 
-            # 必須カラムの存在確認
-            required_columns = [
-                "Pclass",
-                "Sex",
-                "Age",
-                "SibSp",
-                "Parch",
-                "Fare",
-                "Embarked",
-            ]
-            missing_columns = [
-                col for col in required_columns if col not in data.columns
-            ]
+            # 必須カラムチェック
+            required_columns = ["Pclass", "Sex", "Age", "SibSp", "Parch", "Fare", "Embarked"]
+            missing_columns = [col for col in required_columns if col not in data.columns]
             if missing_columns:
                 print(f"警告: 以下のカラムがありません: {missing_columns}")
                 return False, [{"success": False, "missing_columns": missing_columns}]
 
-            # バリデーションを実行
+            # バリデーションルール
             results = []
 
             results.append(
@@ -97,36 +110,30 @@ class DataValidator:
                     column="Pclass", value_set=[1, 2, 3]
                 )
             )
-
             results.append(
                 validator.expect_column_distinct_values_to_be_in_set(
                     column="Sex", value_set=["male", "female"]
                 )
             )
-
             results.append(
                 validator.expect_column_values_to_be_between(
                     column="Age", min_value=0, max_value=100
                 )
             )
-
             results.append(
                 validator.expect_column_values_to_be_between(
                     column="Fare", min_value=0, max_value=600
                 )
             )
-
             results.append(
                 validator.expect_column_distinct_values_to_be_in_set(
                     column="Embarked", value_set=["C", "Q", "S", ""]
                 )
             )
 
-            # 各結果の表示
+            # 出力と成功判定
             for result in results:
-                print(
-                    f"🧪 {result.expectation_config.expectation_type} → {'✅ OK' if result.success else '❌ NG'}"
-                )
+                print(f"🧪 {result.expectation_config.expectation_type} → {'✅ OK' if result.success else '❌ NG'}")
 
             is_successful = all(r.success for r in results)
             return is_successful, results
