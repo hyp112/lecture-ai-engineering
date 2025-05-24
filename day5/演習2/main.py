@@ -1,6 +1,8 @@
 import os
 import pandas as pd
 import time
+import pickle
+import great_expectations as gx
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
@@ -8,9 +10,10 @@ from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
-import pickle
-import time
-import great_expectations as gx
+from great_expectations.data_context import get_context
+from great_expectations.core.batch import BatchRequest
+
+
 
 
 class DataLoader:
