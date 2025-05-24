@@ -2,7 +2,7 @@ import os
 import pandas as pd
 import time
 import pickle
-import great_expectations as gx
+import great_expectations as ge
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
@@ -10,10 +10,6 @@ from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
-from great_expectations.data_context import get_context
-from great_expectations.core.batch import BatchRequest
-
-
 
 
 class DataLoader:
@@ -62,87 +58,158 @@ class DataValidator:
 
     @staticmethod
     def validate_titanic_data(data):
-        """Titanicデータセットの検証"""
-        import pandas as pd
-
+        """Titanicデータセットの検証（Great Expectations 0.15.50対応版）"""
         # DataFrameに変換
         if not isinstance(data, pd.DataFrame):
             return False, ["データはpd.DataFrameである必要があります"]
 
         try:
-            context = get_context()
+            # Great Expectations 0.15.50の古いAPIを使用
+            df_ge = ge.from_pandas(data)
 
-            # データソースの設定（明示的に）
-            datasource_config = {
-                "name": "my_pandas_datasource",
-                "class_name": "Datasource",
-                "execution_engine": {"class_name": "PandasExecutionEngine"},
-                "data_connectors": {
-                    "runtime_data_connector": {
-                        "class_name": "RuntimeDataConnector",
-                        "batch_identifiers": ["default_identifier_name"]
-                    }
-                }
-            }
-            context.add_or_update_datasource(**datasource_config)
+            results = []
 
-            # バッチリクエスト作成
-            batch_request = BatchRequest(
-                datasource_name="my_pandas_datasource",
-                data_connector_name="runtime_data_connector",
-                data_asset_name="my_asset",
-                runtime_parameters={"batch_data": data},
-                batch_identifiers={"default_identifier_name": "default_id"},
-            )
-
-            # Validator取得
-            validator = context.get_validator(batch_request=batch_request)
-
-            # 必須カラムチェック
-            required_columns = ["Pclass", "Sex", "Age", "SibSp", "Parch", "Fare", "Embarked"]
-            missing_columns = [col for col in required_columns if col not in data.columns]
+            # 必須カラムの存在確認
+            required_columns = [
+                "Pclass",
+                "Sex",
+                "Age",
+                "SibSp",
+                "Parch",
+                "Fare",
+                "Embarked",
+            ]
+            missing_columns = [
+                col for col in required_columns if col not in data.columns
+            ]
             if missing_columns:
                 print(f"警告: 以下のカラムがありません: {missing_columns}")
                 return False, [{"success": False, "missing_columns": missing_columns}]
 
-            # バリデーションルール
-            results = []
+            # 各種検証を実行
+            expectations_results = []
 
-            results.append(
-                validator.expect_column_distinct_values_to_be_in_set(
-                    column="Pclass", value_set=[1, 2, 3]
-                )
+            # Pclassの値の検証
+            result1 = df_ge.expect_column_distinct_values_to_be_in_set(
+                column="Pclass", value_set=[1, 2, 3]
             )
-            results.append(
-                validator.expect_column_distinct_values_to_be_in_set(
-                    column="Sex", value_set=["male", "female"]
-                )
+            expectations_results.append(result1)
+
+            # Sexの値の検証
+            result2 = df_ge.expect_column_distinct_values_to_be_in_set(
+                column="Sex", value_set=["male", "female"]
             )
-            results.append(
-                validator.expect_column_values_to_be_between(
-                    column="Age", min_value=0, max_value=100
-                )
+            expectations_results.append(result2)
+
+            # Ageの範囲検証
+            result3 = df_ge.expect_column_values_to_be_between(
+                column="Age", min_value=0, max_value=100
             )
-            results.append(
-                validator.expect_column_values_to_be_between(
-                    column="Fare", min_value=0, max_value=600
-                )
+            expectations_results.append(result3)
+
+            # Fareの範囲検証
+            result4 = df_ge.expect_column_values_to_be_between(
+                column="Fare", min_value=0, max_value=600
             )
-            results.append(
-                validator.expect_column_distinct_values_to_be_in_set(
-                    column="Embarked", value_set=["C", "Q", "S", ""]
-                )
+            expectations_results.append(result4)
+
+            # Embarkedの値の検証（NaNも許可）
+            unique_embarked = data["Embarked"].dropna().unique().tolist()
+            valid_embarked = ["C", "Q", "S"]
+            embarked_valid = all(val in valid_embarked for val in unique_embarked)
+
+            # 手動でEmbarked検証結果を作成
+            embarked_result = {
+                "success": embarked_valid,
+                "expectation_config": {
+                    "expectation_type": "expect_column_distinct_values_to_be_in_set",
+                    "kwargs": {"column": "Embarked", "value_set": valid_embarked},
+                },
+            }
+            expectations_results.append(embarked_result)
+
+            # すべての検証が成功したかチェック
+            is_successful = all(
+                result.get("success", False) for result in expectations_results
             )
 
-            # 出力と成功判定
-            for result in results:
-                print(f"🧪 {result.expectation_config.expectation_type} → {'✅ OK' if result.success else '❌ NG'}")
-
-            is_successful = all(r.success for r in results)
-            return is_successful, results
+            return is_successful, expectations_results
 
         except Exception as e:
             print(f"Great Expectations検証エラー: {e}")
+            print("シンプルな検証に切り替えます...")
+
+            # Great Expectationsが使えない場合のフォールバック
+            return DataValidator._simple_validation(data)
+
+    @staticmethod
+    def _simple_validation(data):
+        """シンプルなデータ検証（フォールバック）"""
+        try:
+            results = []
+
+            # 必須カラムの存在確認
+            required_columns = [
+                "Pclass",
+                "Sex",
+                "Age",
+                "SibSp",
+                "Parch",
+                "Fare",
+                "Embarked",
+            ]
+            missing_columns = [
+                col for col in required_columns if col not in data.columns
+            ]
+            if missing_columns:
+                print(f"警告: 以下のカラムがありません: {missing_columns}")
+                return False, [{"success": False, "missing_columns": missing_columns}]
+
+            # 各種検証
+            validations = [
+                ("Pclass", data["Pclass"].isin([1, 2, 3]).all(), "Pclass値が1,2,3以外"),
+                (
+                    "Sex",
+                    data["Sex"].isin(["male", "female"]).all(),
+                    "Sex値がmale,female以外",
+                ),
+                (
+                    "Age",
+                    (data["Age"].dropna() >= 0).all()
+                    and (data["Age"].dropna() <= 100).all(),
+                    "Age値が0-100範囲外",
+                ),
+                (
+                    "Fare",
+                    (data["Fare"].dropna() >= 0).all()
+                    and (data["Fare"].dropna() <= 600).all(),
+                    "Fare値が0-600範囲外",
+                ),
+                (
+                    "Embarked",
+                    data["Embarked"].dropna().isin(["C", "Q", "S"]).all(),
+                    "Embarked値がC,Q,S以外",
+                ),
+            ]
+
+            all_success = True
+            for col, is_valid, error_msg in validations:
+                result = {
+                    "success": is_valid,
+                    "expectation_config": {
+                        "expectation_type": f"validation_{col}",
+                        "column": col,
+                    },
+                }
+                if not is_valid:
+                    print(f"検証失敗: {error_msg}")
+                    all_success = False
+                results.append(result)
+
+            return all_success, results
+
+        except Exception as e:
+            print(f"シンプル検証エラー: {e}")
             return False, [{"success": False, "error": str(e)}]
 
 
@@ -282,10 +349,19 @@ if __name__ == "__main__":
     # データバリデーション
     success, results = DataValidator.validate_titanic_data(X)
     print(f"データ検証結果: {'成功' if success else '失敗'}")
+
     for result in results:
         # "success": falseの場合はエラーメッセージを表示
-        if not result["success"]:
-            print(f"異常タイプ: {result['expectation_config']['type']}, 結果: {result}")
+        if not result.get("success", True):
+            # expectation_configが存在するかチェック
+            if "expectation_config" in result:
+                exp_type = result["expectation_config"].get(
+                    "expectation_type", "unknown"
+                )
+                print(f"異常タイプ: {exp_type}, 結果: {result}")
+            else:
+                print(f"検証失敗: {result}")
+
     if not success:
         print("データ検証に失敗しました。処理を終了します。")
         exit(1)
